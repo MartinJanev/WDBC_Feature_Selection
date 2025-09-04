@@ -1,4 +1,4 @@
-# scripts/helper.py
+# scripts/MI_vs_Standard.py
 import os, sys, math
 import numpy as np
 import pandas as pd
@@ -76,6 +76,12 @@ def _plot_bestk_table(best, out_png, title):
 
 
 def main():
+    
+    # The objective here is to summarize results by feature selector family (MI-based vs Standard)
+    # and to visualize family-level performance vs k (number of features/components selected).
+    # We treat folds × classifiers as replicates when aggregating by family & k.
+    
+    
     csv_path = os.path.join(OUTDIR, "results_cv.csv")
     if not os.path.exists(csv_path):
         raise SystemExit(f"Missing {csv_path}. Run: python scripts/run_experiments.py")

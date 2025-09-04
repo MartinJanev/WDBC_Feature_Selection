@@ -1,4 +1,4 @@
-# scripts/differences.py
+# scripts/MI_vs_Standard.py
 import os, sys, math
 import numpy as np
 import pandas as pd
@@ -178,6 +178,18 @@ def _plot_stability(stab_summary, out_png):
 
 
 def main():
+
+    # The objective here is to compare MI-based methods (MI, mRMR) against standard methods
+    # using the results in outputs/results_cv.csv and outputs/stability.csv (if present).
+    # We focus on small k (5, 8, 10) where differences are
+    # more likely to appear, and on a fixed classifier (LogReg) to avoid mixing effects.
+    # We produce:
+    # - Feature-efficiency: k@95% of own peak accuracy per selector
+    # - Paired tests: MI & mRMR vs each standard method at k=
+    # - Across-fold variability at small k
+    # - Jaccard stability at small k (if stability.csv is present)
+
+
     res, stab = load_results()
 
     # Focus comparisons on a fixed classifier to avoid mixing effects
