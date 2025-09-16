@@ -1,18 +1,33 @@
+# selectors_standard.py
 from __future__ import annotations
 import numpy as np
 from typing import Optional
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.feature_selection import mutual_info_classif, mutual_info_regression, f_classif
+from sklearn.feature_selection import f_classif
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import RFE
 from sklearn.utils.validation import check_is_fitted
 
+__all__ = [
+    "BaseSelector",
+    "FScoreSelector",
+    "VarianceTopKSelector",
+    "L1LogRegSelector",
+    "RFImportanceSelector",
+    "RecFeatElimLogRegSelector",
+]
+
 class BaseSelector(BaseEstimator, TransformerMixin):
+    """
+    Base class for feature selectors.
+    Implements common functionality for all selectors.
+    :param k: Number of top features to select
+    """
     def __init__(self, k: int):
         self.k = k
-        self.support_ = None
+        self.support_: Optional[np.ndarray] = None
         self.selected_indices_: Optional[np.ndarray] = None
 
     def get_support(self) -> np.ndarray:
@@ -33,68 +48,11 @@ class BaseSelector(BaseEstimator, TransformerMixin):
         check_is_fitted(self, "support_")
         return X[:, self.support_]
 
-class MISelector(BaseSelector):
-    def __init__(self, k: int, n_neighbors: int = 3, random_state: int = 42):
-        super().__init__(k)
-        self.n_neighbors = n_neighbors
-        self.random_state = random_state
-        self._scaler = StandardScaler()
-
-    def fit(self, X, y):
-        Xs = self._scaler.fit_transform(X)
-        mi = mutual_info_classif(Xs, y, n_neighbors=self.n_neighbors, random_state=self.random_state)
-        return self._finalize_support(mi)
-
-class MRMRSelector(BaseSelector):
-    def __init__(self, k: int, lam: float = 1.0, n_neighbors: int = 3, random_state: int = 42):
-        super().__init__(k)
-        self.lam = lam
-        self.n_neighbors = n_neighbors
-        self.random_state = random_state
-        self._scaler = StandardScaler()
-
-    def fit(self, X, y):
-        Xs = self._scaler.fit_transform(X)
-        n_features = Xs.shape[1]
-        rel = mutual_info_classif(Xs, y, n_neighbors=self.n_neighbors, random_state=self.random_state)
-
-        selected = []
-        remaining = list(range(n_features))
-        scores = np.zeros(n_features)
-        pair_cache = {}
-
-        def mi_feat(a, b):
-            key = (min(a,b), max(a,b))
-            if key in pair_cache:
-                return pair_cache[key]
-            val = mutual_info_regression(Xs[:, [a]], Xs[:, b], n_neighbors=self.n_neighbors, random_state=self.random_state)[0]
-            pair_cache[key] = val
-            return val
-
-        for _ in range(min(self.k, n_features)):
-            best_j, best_val = None, -np.inf
-            for j in remaining:
-                if not selected:
-                    val = rel[j]
-                else:
-                    red = np.mean([mi_feat(j, s) for s in selected])
-                    val = rel[j] - self.lam * red
-                if val > best_val:
-                    best_val = val
-                    best_j = j
-                scores[j] = val
-            selected.append(best_j)
-            remaining.remove(best_j)
-
-        mask = np.zeros(n_features, dtype=bool)
-        mask[selected] = True
-        self.support_ = mask
-        self.selected_indices_ = np.array(selected, dtype=int)
-        self.scores_ = scores
-        self.relevance_ = rel
-        return self
-
 class FScoreSelector(BaseSelector):
+    """
+    Feature selector based on ANOVA F-values.
+    Uses sklearn's f_classif to compute F-values between each feature and the target.
+    """
     def __init__(self, k: int):
         super().__init__(k)
 
@@ -104,6 +62,9 @@ class FScoreSelector(BaseSelector):
         return self._finalize_support(f_vals)
 
 class VarianceTopKSelector(BaseSelector):
+    """
+    Feature selector that selects features based on their variance.
+    """
     def __init__(self, k: int):
         super().__init__(k)
 
@@ -112,6 +73,9 @@ class VarianceTopKSelector(BaseSelector):
         return self._finalize_support(variances)
 
 class L1LogRegSelector(BaseSelector):
+    """
+    Feature selector using L1-regularized Logistic Regression.
+    """
     def __init__(self, k: int, C: float = 0.1, max_iter: int = 5000, random_state: int = 42):
         super().__init__(k)
         self.C = C
@@ -129,6 +93,9 @@ class L1LogRegSelector(BaseSelector):
         return self._finalize_support(coefs)
 
 class RFImportanceSelector(BaseSelector):
+    """
+    Feature selector based on feature importances from a Random Forest classifier.
+    """
     def __init__(self, k: int, n_estimators: int = 500, random_state: int = 42):
         super().__init__(k)
         self.n_estimators = n_estimators
@@ -142,7 +109,10 @@ class RFImportanceSelector(BaseSelector):
         importances = self._rf.feature_importances_
         return self._finalize_support(importances)
 
-class RFELogRegSelector(BaseSelector):
+class RecFeatElimLogRegSelector(BaseSelector):
+    """
+    Recursive Feature Elimination (RFE) with Logistic Regression as the estimator.
+    """
     def __init__(self, k: int, max_iter: int = 5000, random_state: int = 42):
         super().__init__(k)
         self._scaler = StandardScaler()

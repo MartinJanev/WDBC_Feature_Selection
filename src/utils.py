@@ -10,6 +10,10 @@ def set_seed(seed: int = SEED):
 
 @dataclass
 class CI:
+    """
+    Confidence Interval
+    A simple dataclass to hold mean, 95% confidence interval bounds, standard deviation, and sample size.
+    """
     mean: float
     lo95: float
     hi95: float
@@ -17,6 +21,12 @@ class CI:
     n: int
 
 def mean_ci(values):
+    """
+    Compute mean and 95% confidence interval for a list or array of values.
+    Uses the formula: CI = mean ± 1.96 * (std / sqrt(n))
+    :param values: List or array of numerical values
+    :return: CI dataclass instance with mean, lo95, hi95, std, and n
+    """
     arr = np.asarray(values, dtype=float)
     m = float(np.mean(arr))
     s = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0

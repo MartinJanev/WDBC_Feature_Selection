@@ -8,9 +8,9 @@ if PROJECT_ROOT not in sys.path:
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-from src.data import load_wdbc
+from src.WDBC import load_wdbc
 from src.eval_protocol import evaluate
-from src.selectors import MISelector
+from src.selectors_mi import MISelector
 
 OUTDIR = os.path.join(PROJECT_ROOT, "outputs")
 

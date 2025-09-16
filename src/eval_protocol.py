@@ -12,11 +12,13 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 
-from .selectors import (
-    MISelector, MRMRSelector, FScoreSelector, VarianceTopKSelector,
-    L1LogRegSelector, RFImportanceSelector, RFELogRegSelector
+from src.selectors_mi import MISelector, MRMRSelector
+from src.selectors_standard import (
+    FScoreSelector, VarianceTopKSelector,
+    L1LogRegSelector, RFImportanceSelector, RecFeatElimLogRegSelector,
 )
-from .utils import set_seed, mean_ci
+
+from src.utils import set_seed, mean_ci
 
 @dataclass
 class Config:
@@ -31,7 +33,7 @@ def make_selector(name: str, k: int):
     if name == "VarTopK": return VarianceTopKSelector(k=k)
     if name == "L1LogReg": return L1LogRegSelector(k=k, C=0.1)
     if name == "RFImp": return RFImportanceSelector(k=k)
-    if name == "RFE-LogReg": return RFELogRegSelector(k=k)
+    if name == "RFE-LogReg": return RecFeatElimLogRegSelector(k=k)
     if name == "PCA":
         return None
     raise ValueError(name)
