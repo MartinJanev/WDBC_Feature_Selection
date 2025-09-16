@@ -16,3 +16,4 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 /outputs/*.csv
+/outputs/significance_summary.md

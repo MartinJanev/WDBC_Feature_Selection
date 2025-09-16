@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import wilcoxon, ttest_rel
+from src.plotting import plot_variability_bar, plot_stability_bar
 
 # --- Path bootstrap so 'src.*' is importable if needed ---
 HERE = os.path.dirname(__file__)
@@ -115,22 +116,27 @@ def _plot_paired_tests_bars(tests, k, out_png):
         row = dfk[(dfk.selector_B == base) & (dfk.selector_A == "MI")]
         if not row.empty:
             p = row["p_wilcoxon"].values[0]
-            plt.text(b.get_x() + b.get_width() / 2, b.get_height() + 1e-3, f"p={p:.3f}", ha="center", va="bottom",
-                     fontsize=8)
+            if not (pd.isna(p)):
+                plt.text(b.get_x() + b.get_width() / 2, b.get_height() + 1e-3, f"p={p:.3f}", ha="center", va="bottom",
+                         fontsize=8)
     for i, b in enumerate(b2):
         base = bases[i]
         row = dfk[(dfk.selector_B == base) & (dfk.selector_A == "mRMR")]
         if not row.empty:
             p = row["p_wilcoxon"].values[0]
-            plt.text(b.get_x() + b.get_width() / 2, b.get_height() + 1e-3, f"p={p:.3f}", ha="center", va="bottom",
-                     fontsize=8)
+            if not (pd.isna(p)):
+                plt.text(b.get_x() + b.get_width() / 2, b.get_height() + 1e-3, f"p={p:.3f}", ha="center", va="bottom",
+                         fontsize=8)
     plt.tight_layout()
     plt.savefig(out_png, dpi=150)
     plt.close()
 
 
+# --- Legacy local plotters (kept for backward-compat; not used below) ---
+# These remain to satisfy the "no deletions" request. The script now delegates to
+# src.plotting.plot_variability_bar / plot_stability_bar.
+
 def _plot_variability(var_df, metric, out_png):
-    # Grouped bars by k; x-axis selectors
     ks = sorted(var_df["k"].unique())
     selectors = var_df["selector"].unique().tolist()
     x = np.arange(len(selectors))
@@ -151,7 +157,6 @@ def _plot_variability(var_df, metric, out_png):
 
 
 def _plot_stability(stab_summary, out_png):
-    # Grouped bars by k for each selector, with error bars from lo/hi
     ks = sorted(stab_summary["k"].unique())
     selectors = stab_summary["selector"].unique().tolist()
     x = np.arange(len(selectors))
@@ -163,7 +168,7 @@ def _plot_stability(stab_summary, out_png):
         lo = [g.loc[s, "jaccard_lo95"] if s in g.index else np.nan for s in selectors]
         hi = [g.loc[s, "jaccard_hi95"] if s in g.index else np.nan for s in selectors]
         y = np.array(y, float)
-        lo = np.array(lo, float);
+        lo = np.array(lo, float)
         hi = np.array(hi, float)
         yerr = np.vstack([y - lo, hi - y])
         plt.bar(x + i * width - (len(ks) - 1) * width / 2, y, width, label=f"k={k}", yerr=yerr, capsize=3)
@@ -178,6 +183,7 @@ def _plot_stability(stab_summary, out_png):
 
 
 def main():
+    os.makedirs(OUTDIR, exist_ok=True)
 
     # The objective here is to compare MI-based methods (MI, mRMR) against standard methods
     # using the results in outputs/results_cv.csv and outputs/stability.csv (if present).
@@ -188,7 +194,6 @@ def main():
     # - Paired tests: MI & mRMR vs each standard method at k=
     # - Across-fold variability at small k
     # - Jaccard stability at small k (if stability.csv is present)
-
 
     res, stab = load_results()
 
@@ -221,17 +226,19 @@ def main():
     var_rows = []
     for sel, k in [(s, k) for s in (MI_METHODS + STD_METHODS) for k in ks]:
         g = res_clf[(res_clf.selector == sel) & (res_clf.k == k)]
-        if g.empty: continue
+        if g.empty:
+            continue
         var_rows.append(dict(selector=sel, k=k,
                              acc_mean=g["accuracy"].mean(),
                              acc_std=g["accuracy"].std(ddof=1),
-                             auc_mean=g["roc_auc"].mean(),
-                             auc_std=g["roc_auc"].std(ddof=1)))
+                             auc_mean=g.get("roc_auc", pd.Series(dtype=float)).mean() if "roc_auc" in g else np.nan,
+                             auc_std=g.get("roc_auc", pd.Series(dtype=float)).std(ddof=1) if "roc_auc" in g else np.nan))
     var_df = pd.DataFrame(var_rows).sort_values(["k", "selector"])
     if not var_df.empty:
         var_df.to_csv(os.path.join(OUTDIR, "metric_variability_smallk.csv"), index=False)
-        _plot_variability(var_df, "acc", os.path.join(OUTDIR, "fig_variability_acc_smallk.png"))
-        _plot_variability(var_df, "auc", os.path.join(OUTDIR, "fig_variability_auc_smallk.png"))
+        # NEW: delegate drawing to centralized plotting utils
+        plot_variability_bar(var_df, os.path.join(OUTDIR, "fig_variability_acc_smallk.png"), metric="acc")
+        plot_variability_bar(var_df, os.path.join(OUTDIR, "fig_variability_auc_smallk.png"), metric="auc")
 
     # Jaccard stability
     if stab is not None and not stab.empty:
@@ -242,7 +249,8 @@ def main():
                              jaccard_lo95=("jaccard_lo95", "mean"),
                              jaccard_hi95=("jaccard_hi95", "mean")))
         stab_summary.to_csv(os.path.join(OUTDIR, "stability_smallk.csv"), index=False)
-        _plot_stability(stab_summary, os.path.join(OUTDIR, "fig_stability_smallk.png"))
+        # NEW: delegate drawing to centralized plotting utils
+        plot_stability_bar(stab_summary, os.path.join(OUTDIR, "fig_stability_smallk.png"))
 
     print("Wrote plots to outputs/: fig_k_efficiency_95.png, fig_paired_diffs_k{5,8,10}.png, "
           "fig_variability_acc_smallk.png, fig_variability_auc_smallk.png, fig_stability_smallk.png")
