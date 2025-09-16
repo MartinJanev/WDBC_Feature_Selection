@@ -1,69 +1,131 @@
-# MI vs. Standard Feature Selection on WDBC
+# MI vs. Standard Feature Selection on WDBC
 
-This project compares mutual-information (MI) feature selection (univariate MI and an mRMR-style redundancy-aware variant) to standard baselines (variance top-k, univariate F-score/ANOVA, L1-logistic, tree-based importance, RFE) on the Breast Cancer Wisconsin (Diagnostic) dataset (WDBC; 569 samples, 30 features).
+This project systematically compares **mutual information (MI)**--based
+feature selection (univariate MI and redundancy-aware mRMR) against
+**standard selectors** (variance threshold, ANOVA F-score, L1-logistic,
+tree-based importance, recursive feature elimination, and PCA as a
+dimensionality baseline) on the **Breast Cancer Wisconsin (Diagnostic)**
+dataset (WDBC; 569 samples, 30 features).
 
-**Key ideas**
-- MI measures shared information between a feature and the label (nonparametric, can capture non-linear signal).
-- mRMR balances *relevance* (feature–label MI) against *redundancy* (MI among features) via a simple greedy criterion.
+------------------------------------------------------------------------
 
-**What you get**
-- Repeated stratified CV evaluation with metric curves vs. `k` features.
-- Summary tables (mean ± 95% CI) for Accuracy / ROC-AUC / F1.
-- Stability (Jaccard) of selected features across folds.
-- Figures: metric vs. `k`, ROC at best-k, MI bar plots.
+## Key ideas
 
----
+-   **Mutual Information (MI):** Quantifies reduction in uncertainty
+    about the label given a feature; captures non-linear dependencies.
+-   **mRMR:** Minimum Redundancy--Maximum Relevance. Greedy forward
+    selection maximizing\
+    \[ I(X_i;Y) -
+    `\lambda `{=tex}`\cdot `{=tex}`\frac{1}{|S|}`{=tex}`\sum`{=tex}\_{j
+    `\in `{=tex}S} I(X_i;X_j), \] balancing relevance against redundancy
+    among already-selected features.
+-   **Baselines:** Cover filter, wrapper, and embedded families
+    (variance, F-score, L1-logistic, RF importance, RFE, PCA).
+
+------------------------------------------------------------------------
+
+## What you get
+
+-   **Cross-validation results:** Stratified 5×5 repeated folds with
+    metrics vs. k.
+-   **Significance testing:** Wilcoxon signed-rank comparisons between
+    MI/mRMR and baselines across k.
+-   **Efficiency & stability analyses:**
+    -   *k@95% efficiency* (min number of features to achieve ≥95% of
+        own peak accuracy).
+    -   *Stability:* Jaccard overlap of selected feature sets.
+-   **Outputs:**
+    -   CSVs with fold-level metrics, summaries, and stability indices.
+    -   Publication-style figures: accuracy/ROC-AUC vs k, ROC at best-k,
+        MI bar charts, paired-difference bars, variability and stability
+        plots.
+
+------------------------------------------------------------------------
+
+## Repository structure
+
+    ├── src/
+    │   ├── data.py              # load_wdbc dataset loader
+    │   ├── eval_protocol.py     # CV evaluation logic, selectors + classifiers
+    │   ├── plotting.py          # centralized plotting utilities
+    │   ├── selectors/           # MISelector, MRMRSelector, and standard selectors
+    │   └── utils.py             # seed setting, CI helpers
+    │
+    ├── scripts/
+    │   ├── run_experiments.py   # run CV, save results/stability CSVs
+    │   ├── make_figures.py      # generate publication-ready plots
+    │   └── MI_vs_Standard.py    # compare MI vs standard, efficiency/stability tests
+    │
+    ├── outputs/                 # all generated CSVs and plots
+    ├── requirements.txt         # dependencies
+    └── README.md                # this file
+
+------------------------------------------------------------------------
 
 ## Quickstart
 
-```bash
-# 1) Create env & install deps
+``` bash
+# 1. Create environment & install dependencies
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate    # Windows: .venv\\Scripts\\activate
 pip install -r requirements.txt
 
-# 2) Run experiments (saves CSVs and some preview plots in ./outputs)
+# 2. Run CV experiments (writes ./outputs/results_cv.csv etc.)
 python scripts/run_experiments.py
 
-# 3) Make publication-style figures (reads results from ./outputs)
+# 3. Generate figures (metric vs k, ROC, MI bars, etc.)
 python scripts/make_figures.py
+
+# 4. Compare MI vs Standard selectors (efficiency, paired tests, stability)
+python scripts/MI_vs_Standard.py
 ```
 
-Outputs go to `./outputs/` (created automatically):
-- `results_cv.csv` — per-config metrics per fold
-- `summary_by_method.csv` — best-k summaries (per selector × classifier)
-- `stability.csv` — Jaccard stability by selector & k
-- `mi_scores.csv` — global MI scores (full data)
-- `fig_accuracy_vs_k.png`, `fig_rocauc_vs_k.png`, `fig_top_mi.png`, `fig_roc_bestk.png`
+All outputs go to `./outputs/`: - `results_cv.csv` --- fold-wise
+metrics\
+- `summary_by_method.csv` --- best-k summaries (per selector ×
+classifier)\
+- `stability.csv` --- Jaccard stability per (selector,k)\
+- `mi_scores.csv` --- MI ranking of features\
+- `k_efficiency_95.csv` --- efficiency table\
+- `paired_tests_smallk.csv` --- statistical comparisons\
+- Plots: `fig_accuracy_vs_k.png`, `fig_rocauc_vs_k.png`,
+`fig_top_mi.png`, `fig_roc_bestk.png`, plus `fig_paired_diffs_k*.png`,
+`fig_variability_*.png`, `fig_stability_smallk.png`
 
----
+
+------------------------------------------------------------------------
 
 ## Design choices
 
-- **Dataset**: `sklearn.datasets.load_breast_cancer()` (WDBC). We standardize *after* selection for modeling; selectors that are scale-sensitive (MI, L1) internally standardize during scoring to avoid distance/penalty artifacts.
-- **Selectors**:
-  - `MI(k)`: rank by `mutual_info_classif`.
-  - `mRMR(k)`: greedy forward selection maximizing `I(X_i;Y) − λ · avg_j I(X_i;X_j)` (feature–feature MI via `mutual_info_regression`).
-  - `F-score(k)`: `SelectKBest(f_classif)` equivalent (implemented manually to keep a uniform interface).
-  - `VarTopK(k)`: highest sample variance (unsupervised baseline).
-  - `L1-LogReg(k)`: train L1 logistic (saga) on standardized data, pick top-`k` by |coef|.
-  - `RF-Imp(k)`: rank by `RandomForestClassifier.feature_importances_`.
-  - `RFE-LogReg(k)`: recursive feature elimination with L2 logistic.
-  - `PCA(k)`: dimensionality-reduction baseline (not feature selection).
-- **Models**: Logistic Regression, linear SVM (`SVC(kernel='linear', probability=True)`), Random Forest.
-- **Evaluation**: `RepeatedStratifiedKFold` (5 folds × 5 repeats), metrics = Accuracy (primary), ROC-AUC, F1. We sweep `k ∈ {3,5,8,10,15,20,30}` for selectors that use `k`. Best-k chosen by mean Accuracy (change to ROC-AUC in code if preferred). 95% CIs computed as `1.96 * std / sqrt(n)`.
+-   **Dataset:** `sklearn.datasets.load_breast_cancer` (WDBC).\
+-   **Selectors implemented in `src/selectors`:**
+    -   `MISelector`, `MRMRSelector`
+    -   `FScoreSelector`, `VarianceTopKSelector`
+    -   `L1LogRegSelector`
+    -   `RFImportanceSelector`
+    -   `RFELogRegSelector`
+    -   PCA baseline
+-   **Models:** Logistic Regression, Linear SVM, Random Forest (see
+    `src/eval_protocol.py`).\
+-   **Evaluation:** Accuracy (primary), ROC-AUC, F1; 95% CIs reported.\
+-   **Plotting:** Centralized in `src/plotting.py`; scripts call shared
+    functions for consistency.
 
----
+------------------------------------------------------------------------
 
-## References & background (for intuition)
+## References
 
-- Medium – *From Data to Insights: How Mutual Information Revolutionizes Feature Engineering*.
-- GeeksforGeeks – *Information Gain and Mutual Information for Machine Learning*.
-- Applied Soft Computing (2014) – MI-based feature selection survey/article.
-- Stanford NLP IR Book – *Mutual Information* chapter.
-- Guyon & Elisseeff (2003) – *An Introduction to Variable and Feature Selection*.
-- Peng et al. (2005) – mRMR paper.
-- Kraskov et al. (2004) – kNN MI estimator.
-- scikit-learn documentation for the algorithms used.
+-   Guyon & Elisseeff (2003). *An Introduction to Variable and Feature
+    Selection*. JMLR.\
+-   Peng et al. (2005). *Feature Selection Based on Mutual Information:
+    Criteria of Max-Dependency, Max-Relevance, and Min-Redundancy*. IEEE
+    TPAMI.\
+-   Kraskov et al. (2004). *Estimating Mutual Information*. Phys Rev E.\
+-   Wolberg et al. (1992). *Breast Cancer Wisconsin Dataset* (UCI).\
+-   Cover & Thomas. *Elements of Information Theory*. Wiley.\
+-   scikit-learn documentation for feature selection and classifiers.\
+-   Additional resources: surveys and tutorials on MI-based feature
+    selection.
 
-Ethical note: use this dataset for educational research; report methodology transparently and avoid over-claiming generalization beyond the dataset.
+**Ethical note:** WDBC is an educational benchmark; results are
+methodological and not diagnostic.
